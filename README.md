@@ -126,10 +126,10 @@ The `DevPayr::bootstrap()` method accepts a flexible configuration array that ta
 
 ### ✅ Required Keys
 
-| Key        | Type   | Description                                                                 |
-|------------|--------|-----------------------------------------------------------------------------|
-| `base_url` | string | The base API URL (defaults to `https://api.devpayr.com/api/v1/`)           |
-| `secret`   | string | The secret key used to decrypt injectables (usually your license or API key) |
+| Key        | Type   | Description                                                                             |
+|------------|--------|-----------------------------------------------------------------------------------------|
+| `base_url` | string | The base API URL (defaults to `https://api.devpayr.com/api/v1/`)                        |
+| `secret`   | string | The secret key used to decrypt injectables (this is created when you add an injectable) |
 
 ---
 
@@ -157,3 +157,4 @@ The `DevPayr::bootstrap()` method accepts a flexible configuration array that ta
 ---
 
 > 🔒 You only need to set what's relevant to your use-case. Defaults will handle most basic setups.
+
