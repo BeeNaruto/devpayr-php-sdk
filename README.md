@@ -158,3 +158,172 @@ The `DevPayr::bootstrap()` method accepts a flexible configuration array that ta
 
 > 🔒 You only need to set what's relevant to your use-case. Defaults will handle most basic setups.
 
+## ⚙️ Runtime Boot & Validation
+
+The SDK provides a simple bootstrapping method to handle license validation, payment enforcement, and injectable fetching in **one unified call**.
+
+### ✅ `DevPayr::bootstrap(array $config): void`
+
+This is the recommended entry point. It performs:
+
+1. **License Key or API Key Detection** (if not explicitly set)
+2. **Domain Validation** (if enforced via DevPayr)
+3. **Project Payment Check** 
+4. **Injectables Retrieval & (Optional) Processing**
+5. **Runtime Enforcement** based on your `invalidBehavior`
+
+### 📦 Example Usage
+
+```php
+use DevPayr\DevPayr;
+
+DevPayr::bootstrap([
+    'license' => $_ENV['LICENSE_KEY'],
+    'secret' => $_ENV['LICENSE_KEY'],
+    'injectablesPath' => __DIR__ . '/injectables',
+    'handleInjectables' => true,
+    'invalidBehavior' => 'modal', // or 'redirect', 'log', 'silent'
+    'customInvalidMessage' => 'Your license is invalid or has expired.',
+]);
+```
+> This will block further execution automatically if the license is invalid or payment is not confirmed.
+
+### 🔒 License or API Key
+> DevPayr will always utilize license key when validating a project; however, for every other actions, the API Key would be required.
+> Consult our Documentation for more information about this - [DevPayr Doc](https://docs.devpayr.com)
+
+## 📥 Injectables Handling
+
+Injectables are encrypted files or snippets tied to a project or license, securely managed through the DevPayr platform. These could include:
+
+- Config files
+- HTML templates
+- Scripts or code snippets
+- Markdown docs
+- JSON configs
+- Custom logic modules
+
+The SDK automatically fetches injectables during `DevPayr::bootstrap()` **if** the `injectables` option is `true`.
+
+### 🧩 How It Works
+
+When bootstrapping:
+
+1. The SDK requests injectables from DevPayr.
+2. They are decrypted using your provided `secret` key.
+3. If `handleInjectables` is enabled, each injectable is **written to the target location** based on its `target_path`, `slug`, and `mode`.
+
+You may choose to either:
+
+- Let the SDK **auto-handle** them (`handleInjectables => true`)
+- Or define your own logic using a **custom processor class**
+
+---
+
+### ⚙️ Modes Supported
+
+Each injectable supports a `mode`, which determines how it’s written:
+
+| Mode          | Description                                 |
+|---------------|---------------------------------------------|
+| `replace`     | Replaces the entire file with new content   |
+| `append`      | Appends to the end of the target file       |
+| `prepend`     | Prepends to the beginning of the file       |
+| `inject`      | (Reserved for future support: marker-based) |
+| `inline_render`| Intended for rendering, not saving         |
+| `stream`      | Stream to output, not saved                 |
+| Others        | Default to `replace`                        |
+
+---
+
+### 📂 File Types
+
+Injectables support multiple types including:
+
+- `file`
+- `snippet`
+- `html`, `markdown`, `css`, `json`, `config`
+- `sdk_module`, `template`, `docs`, `component`, etc.
+
+> Only `file` types support actual file uploads. Others are content-based.
+
+---
+
+### 🛠 Custom Injectable Processor (Optional)
+
+> If you need to control how injectables are stored (e.g. save to DB, S3, cache, etc), define a custom processor class, which 
+> implements the `InjectableProcessorInterface` contract
+
+```php
+class MyCustomProcessor {
+    public static function handle(array $injectable, string $secret, string $basePath, bool $verify = true): string
+    {
+        // Decrypt and save however you want
+        $decrypted = CryptoHelper::decrypt($injectable['encrypted_content'], $secret);
+        // Example: save to cache or custom location
+        return '/custom/storage/path/' . $injectable['slug'];
+    }
+}
+```
+Then reference it in config:
+
+```php
+DevPayr::bootstrap([
+    'secret' => $key,
+    'injectablesProcessor' => MyCustomProcessor::class,
+    'handleInjectables' => true
+]);
+```
+
+## 🔐 Handling License Failure
+
+When a license is invalid, expired, unverified, or the associated project has not paid, the SDK halts normal execution and responds according to the `invalidBehavior` config option.
+
+You can choose what happens in such scenarios using:
+
+```php
+'invalidBehavior' => 'modal' // or: 'redirect', 'log', 'silent'
+```
+
+### 🎭 Supported Behaviors
+
+| Behavior   | Description                                                 |
+| ---------- | ----------------------------------------------------------- |
+| `modal`    | Displays a branded HTML message or modal (default)          |
+| `redirect` | Redirects the user to a custom URL                          |
+| `log`      | Logs the failure to `error_log()` or stdout (if applicable) |
+| `silent`   | Fails silently — no output, just skips execution            |
+
+### 🧩 Additional Options
+> You can configure fallback behaviors further:
+
+| Config Key             | Description                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| `redirectUrl`          | Where to redirect when behavior is `redirect`                                 |
+| `customInvalidMessage` | Message to display when using the default `modal` view                        |
+| `customInvalidView`    | Path to your own custom HTML to show instead of the default `unlicensed.html` |
+
+Example:
+
+```php
+DevPayr::bootstrap([
+    'secret' => $secret,
+    'license' => $license,
+    'invalidBehavior' => 'redirect',
+    'redirectUrl' => 'https://yourdomain.com/license-invalid',
+]);
+```
+### 💡 Pro Tip
+
+You can also define an `onReady()` callback that will only run if validation **passes**:
+
+```php
+DevPayr::bootstrap([
+    'secret' => $secret,
+    'license' => $license,
+    'onReady' => function ($response) {
+        // License valid — proceed with boot logic
+        echo "✅ Welcome, licensed user!";
+    },
+]);
+```
