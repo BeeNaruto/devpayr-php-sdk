@@ -9,17 +9,18 @@ class Config
     protected array $config;
     protected array $required = [
         'base_url' =>'api.devpayr.com/api/v1/',
+        'secret'   => null, // your secret key used for encryption of injectables
     ];
     protected array $defaults = [
-        'recheck'            => true,
-        'injectables'        => true,
-        'injectablesVerify'  => true,
-        'injectablesPath'    => null,
+        'recheck'            => true,   // Use cache or always revalidate
+        'injectables'        => true,    // Fetch & save injectables - if false, injectables will not be returned
+        'injectablesVerify'  => true,   // HMAC signature check - should we verify injectable signature
+        'injectablesPath'    => null,       // Base Path to inject the injectables - if null, we will utilize system path
         'invalidBehavior'    => 'modal',     // log | modal | redirect | silent
-        'redirectUrl'        => null,
-        'timeout'            => 10,
-        'action'             => 'check_project',
-        'onReady'            => null,
+        'redirectUrl'        => null,       // Url to redirect on failure
+        'timeout'            => 1000,       // Optional: request timeout in ms
+        'action'             => 'check_project',  // Optional action - check official documentation docs.devpayr.com
+        'onReady'            => null,   // call back function on success - you will receive successful response here
         'handleInjectables'  => false,  // true | false -- when true, SDK auto-processes the injectables
         'injectablesProcessor'=> null,  // your class which processes the injectables,
         'customInvalidView'  => null,  // optional
@@ -27,7 +28,6 @@ class Config
         'license'            => null,
         'api_key'            => null,
         'per_page'           => null, // number of list to return
-        'include'            =>null,
     ];
 
     public function __construct(array $userConfig)

@@ -10,7 +10,6 @@ use DevPayr\Exceptions\DevPayrException;
 // --------------------------------------------
 $config = [
     'license'        => '01975a4e-bc1c-72fc-a1b5-b509d8f07c75',         // Replace with actual license
-    'base_url'       => 'http://127.0.0.1:8000/api/v1/',   // Your DevPayr API endpoint
     'recheck'        => true,                           // Use cache or always revalidate
     'injectables'    => false,                            // Fetch & save injectables
     'injectablesPath'=> __DIR__ . '/injectables',        // Where to store them

@@ -33,9 +33,15 @@ class InjectableHandler
     /**
      * Process and write injectables to disk (or via custom handler).
      *
-     * @param array $injectables
-     * @param array $options ['secret', 'path', 'verify']
-     * @return void
+     * This method handles multiple injectables in batch, verifying their signature,
+     * decrypting them, and applying them using their specified injection `mode`.
+     *
+     * @param array $injectables Each injectable must include slug, content, mode, and target_path
+     * @param array $options     [
+     *                             'secret' => string (required),
+     *                             'path'   => string (base code directory, optional),
+     *                             'verify' => bool (default: true)
+     *                           ]
      * @throws DevPayrException
      */
     public static function process(array $injectables, array $options): void
@@ -50,12 +56,12 @@ class InjectableHandler
 
         foreach ($injectables as $injectable) {
             $slug       = $injectable['slug'] ?? null;
-            $targetPath = $injectable['target_path'] ?? '';
+            $targetPath = $injectable['target_path'] ?? null;
             $encrypted  = $injectable['encrypted_content'] ?? $injectable['content'] ?? null;
             $signature  = $injectable['signature'] ?? null;
 
-            if (!$slug || !$encrypted) {
-                throw new DevPayrException("Missing 'slug' or 'content' in injectable.");
+            if (!$slug || !$encrypted || !$targetPath) {
+                throw new DevPayrException("Injectable must include slug, content, and target_path.");
             }
 
             if ($verify && $signature && !HashHelper::verifySignature($encrypted, $secret, $signature)) {
@@ -67,37 +73,79 @@ class InjectableHandler
         }
     }
 
+
     /**
-     * Default injectable handler (writes to disk).
+     * Default injectable handler.
      *
-     * @param array $injectable
-     * @param string $secret
-     * @param string $basePath
-     * @param bool $verifySignature
-     * @return string
+     * Handles all types of injectables, using a given injection `mode` and `target_path`.
+     * This method attempts to find or create the file in the codebase (relative to $basePath)
+     * and applies the decrypted content accordingly.
+     *
+     * 🔹 Supported Modes:
+     *  - 'append'         → Adds content to the end of the file.
+     *  - 'prepend'        → Adds content to the beginning of the file.
+     *  - 'replace'        → Replaces file content entirely.
+     *  - 'inject'         → (Reserved for future marker-based injection).
+     *  - Others default to 'replace'.
+     *
+     * 🔹 Behavior:
+     *  - If file doesn't exist, it is created with full content.
+     *  - For file uploads, the content is written directly.
+     *
+     * @param array $injectable        Decrypted injectable from API
+     * @param string $secret           The decryption key used for content
+     * @param string $basePath         Base project root to resolve target_path
+     * @param bool $verifySignature    Not used here, assumed verified
+     * @return string                  Absolute path of the file written
+     *
      * @throws DevPayrException
      */
     public static function handle(array $injectable, string $secret, string $basePath, bool $verifySignature = true): string
     {
         $slug       = $injectable['slug'];
-        $targetPath = $injectable['target_path'] ?? '';
-        $encrypted  = $injectable['encrypted_content'] ?? $injectable['content'];
+        $targetPath = $injectable['target_path'] ?? null;
+        $mode       = $injectable['mode'] ?? 'replace';
+        $encrypted  = $injectable['encrypted_content'] ?? $injectable['content'] ?? '';
         $decrypted  = CryptoHelper::decrypt($encrypted, $secret);
 
-        $fullPath = rtrim($basePath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR .
-            trim($targetPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR .
-            "{$slug}.txt";
-
-        $dir = dirname($fullPath);
-
-        if (!is_dir($dir) && !mkdir($dir, 0777, true) && !is_dir($dir)) {
-            throw new DevPayrException("Unable to create directory for injectable: $dir");
+        if (!$targetPath) {
+            throw new DevPayrException("No target path specified for injectable: {$slug}");
         }
 
-        if (file_put_contents($fullPath, $decrypted) === false) {
-            throw new DevPayrException("Failed to write injectable to path: $fullPath");
+        // Resolve full absolute file path (relative to basePath)
+        $fullPath = rtrim($basePath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . trim($targetPath, DIRECTORY_SEPARATOR);
+
+        $directory = dirname($fullPath);
+        if (!is_dir($directory) && !mkdir($directory, 0777, true) && !is_dir($directory)) {
+            throw new DevPayrException("Unable to create directory: {$directory}");
+        }
+
+        // If file doesn't exist, treat all modes as replace
+        if (!file_exists($fullPath)) {
+            if (file_put_contents($fullPath, $decrypted) === false) {
+                throw new DevPayrException("Failed to write injectable to: {$fullPath}");
+            }
+
+            return $fullPath;
+        }
+
+        // File exists — handle based on mode
+        $existing = file_get_contents($fullPath);
+        if ($existing === false) {
+            throw new DevPayrException("Failed to read existing content from: {$fullPath}");
+        }
+
+        $content = match ($mode) {
+            'append' => $existing . $decrypted,
+            'prepend' => $decrypted . $existing,
+            default => $decrypted,
+        };
+
+        if (file_put_contents($fullPath, $content) === false) {
+            throw new DevPayrException("Failed to update injectable at: {$fullPath}");
         }
 
         return $fullPath;
     }
+
 }

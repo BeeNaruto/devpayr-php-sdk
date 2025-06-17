@@ -73,7 +73,7 @@ class RuntimeValidator
     protected function handleInjectables(array $injectables): void
     {
         InjectableHandler::process($injectables, [
-            'secret' => $this->license,
+            'secret' => $this->config->get('secret'),
             'path'   => $this->config->get('injectablesPath', sys_get_temp_dir()),
             'verify' => $this->config->get('injectablesVerify', true),
         ]);
