@@ -327,3 +327,473 @@ DevPayr::bootstrap([
     },
 ]);
 ```
+
+## 🧰 Available Services
+
+DevPayr provides dedicated service classes for working with various parts of your licensing system — including projects, licenses, domains, injectables, and payment verification.
+
+Each service class can be used independently or accessed via the `DevPayr::` static methods after `bootstrap()`.
+
+### ✅ Accessing Services After Bootstrapping
+
+Once you've bootstrapped with a valid configuration:
+
+```php
+use DevPayr\DevPayr;
+
+DevPayr::bootstrap([
+    'license' => 'your-license-key',
+    'secret' => 'your-decryption-secret',
+]);
+
+$projects = DevPayr::projects();
+$licenses = DevPayr::licenses();
+$domains = DevPayr::domains();
+$injectables = DevPayr::injectables();
+$payments = DevPayr::payments();
+```
+> Each of these returns a strongly typed service class:
+
+| Service                  | Class               | Description                                   |
+| ------------------------ | ------------------- | --------------------------------------------- |
+| `DevPayr::projects()`    | `ProjectService`    | Manage projects: list, create, update, delete |
+| `DevPayr::licenses()`    | `LicenseService`    | Create, revoke, or validate license keys      |
+| `DevPayr::domains()`     | `DomainService`     | Manage domain restrictions for your projects  |
+| `DevPayr::injectables()` | `InjectableService` | Fetch and manage encrypted injectables        |
+| `DevPayr::payments()`    | `PaymentService`    | Check payment status for licenses or projects |
+
+> 🧠 These services are authenticated using the same config object passed to DevPayr::bootstrap(). You can also instantiate them manually if needed.
+
+```php
+use DevPayr\Services\LicenseService;
+use DevPayr\Config\Config;
+
+$config = new Config([...]);
+$licenseService = new LicenseService($config);
+```
+
+## 📦 Service API Examples
+
+Below are real-world examples of how to use each core service within the DevPayr SDK to interact with your projects, licenses, domains, injectables, and payment status.
+
+---
+
+### 🔹 ProjectService
+
+```php
+$projectService = DevPayr::projects($config[
+    'per_page' =>50
+]);
+
+// List all projects
+$projects = $projectService->list();
+
+// Create a new project
+$created = $projectService->create([
+    'name' => 'My Awesome App',
+]);
+
+// Update a project
+$projectService->update($projectId, [
+    'name' => 'Updated Name',
+]);
+
+// Get a project
+$projectService->get($projectId);
+
+// Delete a project
+$projectService->delete($projectId);
+```
+### 🔹 LicenseService
+
+```php
+$licenseService = DevPayr::licenses($config);
+
+// Issue a new license
+$newLicense = $licenseService->create([
+    'project_id' => $projectId,
+    'expires_at' => '2025-12-31',
+]);
+
+// Delete an existing license
+$licenseService->delete($projectId, $licenseId);
+
+// Revoke a license
+$licenseService->revoke($projectId, $licenseId);
+
+// Reactivate a license
+$licenseService->reactivate($projectId, $licenseId);
+
+// Get a license
+$licenseService->show($projectId, $licenseId);
+
+// List all project's license
+$licenseService->list($projectId);
+```
+
+### 🔹 DomainService
+```php
+$domainService = DevPayr::domains();
+
+// List allowed domains for a project
+$domains = $domainService->list($projectId);
+
+// Get an allowed domain for a project
+$domains = $domainService->show($projectId, $domainId);
+
+// Add a domain
+$domainService->create($projectId, [
+    'domain' => 'example.com',
+]);
+
+// Update a domain
+$domainService->create($projectId, $domainId, [
+    'domain' => 'example.com',
+]);
+
+// Delete a domain
+$domainService->delete($domainId);
+```
+
+### 🔹 InjectableService
+
+```php
+$injectableService = DevPayr::injectables();
+
+// List injectables for a project
+$injectables = $injectableService->list($projectId);
+
+// Get an injectables for a project
+$injectables = $injectableService->list($projectId, $injectableId);
+
+// Create a new injectable
+$injectableService->create($projectId, [
+    'slug' => 'header-snippet',
+    'content' => '<?= "Hello World"; ?>',
+    'type' => 'snippet',
+    'mode' => 'replace',
+    'target_path' => 'partials/',
+]);
+
+// Update an injectable
+$injectableService->create($projectId, $injectableId, [
+    'slug' => 'header-snippet',
+    'content' => '<?= "Hello World"; ?>',
+    'type' => 'snippet',
+    'mode' => 'replace',
+    'target_path' => 'partials/',
+]);
+
+// Delete an injectable
+$injectableService->delete($injectableId);
+```
+
+### 🔹 PaymentService
+
+```php
+$paymentService = DevPayr::payments($config);
+
+// Check if a license has been paid for
+$paid = $paymentService->checkWithLicenseKey([
+    'license' => 'YOUR-LICENSE-KEY',
+]);
+
+// Check if a license has been paid for
+$paid = $paymentService->checkWithApiKey($projectId);
+
+if (!$paid) {
+    echo "⚠️ Payment required to continue.";
+}
+```
+> These examples show how you can build powerful integrations and admin 
+> tools around your software licensing — right from your own dashboard or script.
+
+## 🧩 Custom Injectable Processor
+DevPayr allows you to define your own injectable processor — so you can decide what to do with each decrypted file (e.g. store in memory, write to disk, upload to cloud).
+
+Instead of using the default file-based processor, you can implement the following interface:
+```php
+namespace DevPayr\Contracts;
+
+/**
+ * Interface InjectableProcessorInterface
+ *
+ * Allows for custom processing of SDK injectables (e.g. decrypt, verify, and save elsewhere).
+ */
+interface InjectableProcessorInterface
+{
+    /**
+     * Handle a single injectable payload.
+     *
+     * @param array $injectable Raw injectable data from API
+     * @param string $secret Shared secret (typically the license key)
+     * @param string $basePath Base path for writing (if file-based)
+     * @param bool $verifySignature Whether to verify HMAC signature
+     *
+     * @return string Path or identifier of the saved injectable
+     */
+    public static function handle(array $injectable, string $secret, string $basePath, bool $verifySignature = true): string;
+}
+```
+#### 🧱 Example: Create Your Custom Processor
+```php
+namespace App\Licensing;
+
+use DevPayr\Contracts\InjectableProcessorInterface;
+use DevPayr\Exceptions\DevPayrException;
+use DevPayr\Support\CryptoHelper;
+
+class CustomInjectableHandler implements InjectableProcessorInterface
+{
+    public static function handle(array $injectable, string $secret, string $basePath, bool $verifySignature = true): string
+    {
+        $slug = $injectable['slug'];
+        $encrypted = $injectable['encrypted_content'] ?? $injectable['content'];
+        $decrypted = CryptoHelper::decrypt($encrypted, $secret);
+
+        // ✅ Save to a database, Redis, S3, or custom location
+        // Example: Save to temporary file
+        $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . "{$slug}.tmp";
+
+        if (file_put_contents($path, $decrypted) === false) {
+            throw new DevPayrException("Failed to store injectable: {$slug}");
+        }
+
+        return $path;
+    }
+}
+```
+#### ⚙️ Registering Your Processor
+Pass your class via the `injectablesProcessor` config key:
+```php
+DevPayr::bootstrap([
+    'secret' => $secret,
+    'license' => $license,
+    'handleInjectables' => true,
+    'injectablesProcessor' => \App\Licensing\CustomInjectableHandler::class,
+]);
+```
+### 💡 Use Cases
+
+Here are some ways you can use a **custom injectable processor**:
+
+- ✅ Save injectables to memory or cache (e.g. **Redis**, **Memcached**)
+- ☁️ Upload injectables to **cloud storage** (e.g. **AWS S3**, **Dropbox**)
+- 🔄 Dynamically inject content into **application runtime**
+- 🖼️ Render injectables directly in **views** or **templates**
+
+> 🔄 **Note:** This method is invoked *per injectable*, allowing you to handle each file individually and flexibly.
+
+## ❗ Error Handling
+
+The DevPayr PHP SDK uses structured exceptions to help you handle issues like license failure, API errors, and decryption problems gracefully.
+
+### 🔹 Common Exceptions
+
+| Exception                  | Description                                                                 |
+|---------------------------|-----------------------------------------------------------------------------|
+| `DevPayrException`        | Base exception for all SDK-related logic or configuration errors            |
+| `ApiResponseException`    | Thrown when the DevPayr API returns an error, bad payload, or HTTP failure  |
+
+> ✅ Both exceptions implement standard PHP `\Throwable`, so you can catch them with `try/catch`.
+
+---
+
+### 🔸 Example: Catching Runtime Errors
+
+```php
+use DevPayr\DevPayr;
+use DevPayr\Exceptions\DevPayrException;
+use DevPayr\Exceptions\ApiResponseException;
+
+try {
+    DevPayr::bootstrap([
+        'license' => 'my-license-key',
+        'secret' => 'my-secret-key',
+    ]);
+} catch (ApiResponseException $e) {
+    // API responded with an error (e.g. invalid license, quota exceeded)
+    echo "API Error: " . $e->getMessage();
+} catch (DevPayrException $e) {
+    // SDK misconfigured or failed to decrypt/process injectables
+    echo "SDK Error: " . $e->getMessage();
+}
+```
+
+## ⚙️ Advanced Usage
+
+For developers building more dynamic or complex applications, the DevPayr PHP SDK provides several advanced options for customization and integration.
+
+---
+
+### 🔁 Enable/Disable Revalidation
+
+By default, DevPayr caches validation results for a short period (using your OS temp folder) to avoid repeated network requests.
+
+You can disable rechecking and force revalidation on every boot:
+
+```php
+DevPayr::bootstrap([
+    'license'  => 'YOUR-LICENSE-KEY',
+    'secret'   => 'YOUR-SECRET',
+    'recheck'  => true, // ← Set false to use cache only
+]);
+```
+### 📦 Custom Injectables Folder
+By default, injectables are saved to the system temp folder. You can change where they’re stored:
+
+```php
+DevPayr::bootstrap([
+    'secret'           => $secret,
+    'license'          => $license,
+    'injectablesPath'  => __DIR__ . '/config/devpayr/',
+]);
+```
+### 🧩 Handle Injectables Yourself
+If you want full control over how injectables are stored or interpreted:
+```php
+DevPayr::bootstrap([
+    'secret'              => $secret,
+    'license'             => $license,
+    'handleInjectables'   => true,
+    'injectablesProcessor'=> \App\Licensing\CustomHandler::class,
+]);
+```
+> 💡 **See** [Custom Injectable Processor](#custom-injectable-processor) **for how to define your own handler.**
+
+### 🧠 Runtime Callback (onReady)
+Run custom logic only if validation succeeds:
+
+```php
+DevPayr::bootstrap([
+    'secret'   => $secret,
+    'license'  => $license,
+    'onReady'  => function ($response) {
+        // Your app boot logic
+    },
+]);
+```
+### 🔐 License Key vs API Key
+> 🔐 You can use either:
+
+- **`license`**: Runtime key for validation and injectables (best for public or distributed software).
+- **`api_key`**: Authenticated API access (for listing, creating, managing resources via backend).
+
+✅ Both can be used separately or together, depending on your need .
+
+
+## 🤝 Contributing
+
+We welcome contributions to the **DevPayr PHP SDK**! Whether you want to fix a bug, add a feature, improve documentation, or share feedback — your input is valuable and appreciated.
+
+### 🛠 How to Contribute
+
+1. **Fork the Repository**
+
+   Start by clicking the "Fork" button on GitHub and clone your forked repository:
+
+```bash
+   git clone https://github.com/your-username/devpayr-php-sdk.git
+   cd devpayr-php-sdk
+  ```
+2. **Install Dependencies**
+   Make sure you have [Composer](https://getcomposer.org/) installed, then run:
+
+```bash
+composer install
+```
+3. **Create a New Branch**
+
+Use a descriptive name for your branch based on the type of contribution:
+
+```bash
+git checkout -b fix-invalid-cache-handling
+```
+4.  **Make Your Changes**
+
+Write clear, concise, and well-documented code. Please ensure the following:
+
+- ✅ Follow the **PSR-12** coding standard.
+- 📝 Include **inline comments** where appropriate to explain non-obvious logic.
+- 📁 Maintain the **existing file structure and naming conventions** used in the SDK.
+- 🔁 If modifying existing logic, ensure **backward compatibility** unless explicitly intended.
+
+5. **Test Your Changes**
+
+If your change is code-related, add tests if possible and run:
+
+```bash
+composer test
+```
+
+6. **Commit and Push**
+
+Use meaningful commit messages:
+
+```bash
+git add .
+git commit -m "🐛 Fix cache invalidation issue on license bootstrap"
+git push origin fix-invalid-cache-handling
+```
+
+7. **Open a Pull Request**
+
+Once you're satisfied with your changes, go to your fork on GitHub and click **"Compare & pull request"**. Please include:
+
+- ✅ A clear title and description of what you changed
+- 🔗 Link to any related issues or discussions
+- 📌 Any important notes for reviewers (e.g., areas to focus on)
+
+---
+
+### 🧪 Guidelines
+
+- 📝 Write descriptive and clear commit messages
+- 🧩 Keep pull requests focused — if you’re making multiple unrelated changes, consider **splitting them into separate PRs**
+- 🧪 Include tests or test instructions where applicable
+- 🚫 Avoid breaking backward compatibility unless absolutely necessary — and justify it in your PR
+
+---
+
+### 💬 Need Help?
+
+If you're unsure how or what to contribute:
+
+- Browse the [issues page](https://github.com/xultech/devpayr-php-sdk/issues) for `help-wanted` tags
+- Reach out via **support@devpayr.com**
+- Or open a **GitHub discussion** to chat with the maintainers
+- You can also suggest documentation improvements or ideas — even if you're not a coder!
+
+---
+
+### 🛡 Code of Conduct
+
+We follow the [Contributor Covenant](https://www.contributor-covenant.org/) Code of Conduct. By participating, you agree to:
+
+- Treat everyone with respect and empathy
+- Foster an inclusive and supportive environment
+- Help keep this project a welcoming space for all
+
+### 🔐 Security
+
+We take the security of DevPayr and its SDKs seriously.
+
+If you discover any security vulnerability, please **do not disclose it publicly**. Instead, follow responsible disclosure by reporting it directly to us.
+
+#### 📬 Report a Vulnerability
+
+- Email: **security@devpayr.com**
+- Subject: `[Security Report] DevPayr PHP SDK`
+- Include as much detail as possible:
+  - Description of the vulnerability
+  - Steps to reproduce
+  - Potential impact
+  - Suggested remediation (if any)
+
+We will respond promptly to investigate, validate, and address the issue.
+
+#### 🔐 Responsible Disclosure
+
+We appreciate ethical researchers and developers who help make the platform safer for everyone. Your report will be treated with respect, and we may acknowledge your contribution (unless you prefer otherwise).
+
+Thank you for helping keep DevPayr secure.
