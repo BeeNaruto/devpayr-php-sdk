@@ -3,7 +3,6 @@
 namespace DevPayr\Utils;
 
 use DevPayr\Exceptions\DevPayrException;
-use Random\RandomException;
 
 /**
  * Class CryptoHelper
@@ -58,7 +57,7 @@ class CryptoHelper
 
         try {
             $iv = random_bytes($ivLength);
-        } catch (RandomException $e) {
+        } catch (\Exception $e) {
             throw new DevPayrException("IV generation failed: " . $e->getMessage());
         }
 
