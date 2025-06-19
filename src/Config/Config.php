@@ -8,7 +8,7 @@ class Config
 {
     protected array $config;
     protected array $required = [
-        'base_url' =>'api.devpayr.com/api/v1/',
+        'base_url' =>'https://api.devpayr.dev/api/v1/',
         'secret'   => null, // your secret key used for encryption of injectables
     ];
     protected array $defaults = [
